@@ -9,8 +9,8 @@ const mainwinConfig: BrowserWindowConstructorOptions = {
     autoHideMenuBar: true,
     show: false,
     icon: path.join(__dirname, '../../../build/icon.ico'),
-    frame: false,
-    fullscreen: true,  // 默认真全屏
+    frame: false,          // 无边框
+    fullscreen: true,      // 【关键】启动即进入真全屏
     webPreferences: {
         webgl: true,
         partition: 'persist:fntv',
