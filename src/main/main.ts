@@ -76,7 +76,6 @@ if (!gotTheLock) {
             setupWindowEvents(mainWindow);
 
             // 【新增】注册 IPC 处理器 (必须调用，否则按钮无效)
-            // 这个函数会监听 'window-maximize' 等事件
             winctrl.setupIpcHandlers(mainWindow);
 
             // 设置全屏切换
@@ -92,13 +91,15 @@ if (!gotTheLock) {
             await winctrl.setupCookieRestore(mainWindow);
 
             // 【新增】监听窗口状态变化，同步图标状态
-            // 当用户通过 F11 或 系统拖拽 改变全屏状态时，通知前端更新图标
+            // 修复 TS18047 错误：在回调中检查 mainWindow 是否存在
             mainWindow.on('enter-full-screen', () => {
+                if (!mainWindow) return;
                 log.info('检测到进入全屏');
                 mainWindow.webContents.send('window-state-changed', true);
             });
 
             mainWindow.on('leave-full-screen', () => {
+                if (!mainWindow) return;
                 log.info('检测到退出全屏');
                 mainWindow.webContents.send('window-state-changed', false);
             });
