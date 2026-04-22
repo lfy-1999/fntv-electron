@@ -1,67 +1,98 @@
-import { BrowserWindow } from 'electron';
+import * as path from 'path';
 import * as log from '../../modules/logger';
+import { readConfig } from '../../modules/fn_config/config';
+import { restoreCookies } from '../../modules/fn_config/cookie';
+import { BrowserWindow } from 'electron';
 
 /**
- * 退出全屏 (还原窗口)
+ * 退出真全屏，恢复为窗口模式（半屏大小）
+ * @param {Electron.BrowserWindow} mainWindow - 主窗口实例
  */
-export function setHalfScreen(mainWindow: BrowserWindow): void {
+export function exitFullScreen(mainWindow: BrowserWindow): void {
     if (!mainWindow) return;
+
     mainWindow.setFullScreen(false);
-    // 退出全屏后，给一个默认大小并居中，防止窗口跑到屏幕外
     mainWindow.setSize(1200, 800);
     mainWindow.center();
 }
 
 /**
- * 进入全屏
+ * 进入真全屏
+ * @param {Electron.BrowserWindow} mainWindow - 主窗口实例
  */
-export function setFullScreen(mainWindow: BrowserWindow): void {
-    if (mainWindow) {
-        mainWindow.setFullScreen(true);
-    }
+export function enterFullScreen(mainWindow: BrowserWindow): void {
+    if (mainWindow) mainWindow.setFullScreen(true);
 }
 
 /**
- * 设置全屏切换 (F11 监听)
+ * 设置全屏切换（F11 切换真全屏/窗口模式）
+ * @param {Electron.BrowserWindow} mainWindow - 主窗口实例
  */
 export function setupFullScreenToggle(mainWindow: BrowserWindow): void {
-    let isFullScreen = false;
     mainWindow.webContents.on('before-input-event', (event, input) => {
         if (input.type === 'keyDown' && input.key === 'F11') {
-            if (isFullScreen) {
-                setHalfScreen(mainWindow);
+            const isCurrentlyFullScreen = mainWindow.isFullScreen();
+            if (isCurrentlyFullScreen) {
+                exitFullScreen(mainWindow);
             } else {
-                setFullScreen(mainWindow);
+                enterFullScreen(mainWindow);
             }
-            isFullScreen = !isFullScreen;
             event.preventDefault();
         }
     });
 }
 
 /**
- * 禁用输入法 (保持原有逻辑)
+ * 设置输入法相关功能
+ * @param {Electron.BrowserWindow} mainWindow - 主窗口实例
  */
 export function setupInputMethodDisable(mainWindow: BrowserWindow): void {
     mainWindow.webContents.on('dom-ready', () => {
         mainWindow.webContents.insertCSS(`
-            * { ime-mode: disabled !important; -webkit-ime-mode: disabled !important; }
-            input, textarea { ime-mode: inactive !important; -webkit-ime-mode: inactive !important; }
+            * {
+                ime-mode: disabled !important;
+                -webkit-ime-mode: disabled !important;
+            }
+            input, textarea {
+                ime-mode: inactive !important;
+                -webkit-ime-mode: inactive !important;
+            }
         `);
     });
 }
 
 /**
- * 窗口显示事件
+ * 设置窗口显示事件
+ * @param {Electron.BrowserWindow} mainWindow - 主窗口实例
  */
 export function setupWindowShowEvents(mainWindow: BrowserWindow): void {
     mainWindow.once('ready-to-show', () => mainWindow.show());
 }
 
 /**
- * Cookie 恢复逻辑 (保持原有逻辑)
+ * 设置 cookie 恢复
+ * @param {Electron.BrowserWindow} mainWindow - 主窗口实例
  */
 export async function setupCookieRestore(mainWindow: BrowserWindow): Promise<void> {
-    // 这里保留你的原有逻辑，为了篇幅省略具体实现，请把你原来的代码粘贴回来
-    // const savedConfig = readConfig(); ...
+    const savedConfig = readConfig();
+    if (!savedConfig || !savedConfig.token || !savedConfig.domain) {
+        log.warn('没有找到已保存的配置，无法恢复 cookie');
+        mainWindow.loadFile(path.join(__dirname, '../../../resource/login/index.html'));
+        return;
+    }
+
+    log.info('恢复登录状态，即将跳转到主页面, domain:', savedConfig.domain, ' token:', savedConfig.token);
+
+    await restoreCookies(savedConfig.domain, savedConfig.token).then((result) => {
+        if (result === true) {
+            mainWindow.loadURL(`${savedConfig.domain}/v`);
+            return;
+        }
+
+        log.warn('Cookie 恢复失败，跳转到登录页面');
+        mainWindow.loadFile(path.join(__dirname, '../../../resource/login/index.html'));
+    }).catch((error) => {
+        log.error('Cookie 恢复过程中出现异常:', error);
+        mainWindow.loadFile(path.join(__dirname, '../../../resource/login/index.html'));
+    });
 }
