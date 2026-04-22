@@ -2,7 +2,7 @@ import * as path from 'path';
 import * as log from '../../modules/logger';
 import { readConfig } from '../../modules/fn_config/config';
 import { restoreCookies } from '../../modules/fn_config/cookie';
-import { BrowserWindow, ipcMain } from 'electron'; // 必须引入 ipcMain
+import { BrowserWindow, ipcMain } from 'electron';
 
 /**
  * 设置窗口为半屏 (退出全屏模式)
@@ -10,18 +10,22 @@ import { BrowserWindow, ipcMain } from 'electron'; // 必须引入 ipcMain
 export function setHalfScreen(mainWindow: BrowserWindow): void {
     if (!mainWindow) return;
 
+    log.info('执行：退出全屏/最大化，恢复窗口');
+
+    // 1. 强制退出全屏
     if (mainWindow.isFullScreen()) {
         mainWindow.setFullScreen(false);
     }
-    
+
+    // 2. 强制取消最大化
     if (mainWindow.isMaximized()) {
         mainWindow.unmaximize();
     }
 
+    // 3. 确保窗口可见且居中
+    mainWindow.show();
     mainWindow.setSize(1200, 800);
     mainWindow.center();
-    
-    log.info('窗口已恢复为半屏模式');
 }
 
 /**
@@ -29,32 +33,48 @@ export function setHalfScreen(mainWindow: BrowserWindow): void {
  */
 export function setFullScreen(mainWindow: BrowserWindow): void {
     if (!mainWindow) return;
-    
+
+    log.info('执行：进入全屏模式');
+
+    // 1. 确保窗口是显示的
+    mainWindow.show();
+
+    // 2. 强制进入全屏
+    // 使用 setFullScreen 而不是 maximize
     mainWindow.setFullScreen(true);
-    log.info('窗口已进入全屏模式');
 }
 
 /**
  * 【核心修改】设置 IPC 监听器
+ * 这里的逻辑非常简单：收到信号 -> 判断当前状态 -> 执行相反操作
  */
 export function setupIpcHandlers(mainWindow: BrowserWindow): void {
-    // 1. 监听右上角按钮点击
+    // 监听右上角按钮点击
     ipcMain.on('window-maximize', () => {
-        if (mainWindow.isFullScreen()) {
+        if (!mainWindow) return;
+
+        log.info('收到 window-maximize 信号');
+        
+        // 核心逻辑：如果当前已经是全屏，就退出；否则进入全屏
+        const isCurrentlyFullScreen = mainWindow.isFullScreen();
+        
+        if (isCurrentlyFullScreen) {
+            log.info('当前是全屏，执行退出');
             setHalfScreen(mainWindow);
         } else {
+            log.info('当前是窗口化，执行全屏');
             setFullScreen(mainWindow);
         }
     });
 
-    // 2. 监听最小化
+    // 监听最小化
     ipcMain.on('window-minimize', () => {
-        mainWindow.minimize();
+        if (mainWindow) mainWindow.minimize();
     });
 
-    // 3. 监听关闭
+    // 监听关闭
     ipcMain.on('window-close', () => {
-        mainWindow.close();
+        if (mainWindow) mainWindow.close();
     });
 }
 
@@ -92,6 +112,7 @@ export function setupInputMethodDisable(mainWindow: BrowserWindow): void {
 export function setupWindowShowEvents(mainWindow: BrowserWindow): void {
     mainWindow.once('ready-to-show', () => {
         mainWindow.show();
+        // 强制默认全屏
         setFullScreen(mainWindow);
     });
 }
