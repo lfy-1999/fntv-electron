@@ -5,39 +5,55 @@ import { restoreCookies } from '../../modules/fn_config/cookie';
 import { BrowserWindow } from 'electron';
 
 /**
- * 设置窗口为半屏
+ * 设置窗口为半屏 (退出全屏模式)
  * @param {Electron.BrowserWindow} mainWindow - 主窗口实例
  */
 export function setHalfScreen(mainWindow: BrowserWindow): void {
     if (!mainWindow) return;
 
+    // 1. 退出 Electron 的原生全屏模式
+    if (mainWindow.isFullScreen()) {
+        mainWindow.setFullScreen(false);
+    }
+    
+    // 2. 取消最大化状态（防止窗口卡在最大化）
+    if (mainWindow.isMaximized()) {
+        mainWindow.unmaximize();
+    }
+
+    // 3. 恢复到指定尺寸并居中
     mainWindow.setSize(1200, 800);
     mainWindow.center();
-    mainWindow.unmaximize();
 }
 
 /**
- * 设置窗口为全屏
+ * 设置窗口为真全屏
  * @param {Electron.BrowserWindow} mainWindow - 主窗口实例
  */
 export function setFullScreen(mainWindow: BrowserWindow): void {
-    if (mainWindow) mainWindow.maximize();
+    if (!mainWindow) return;
+    
+    // 直接使用 Electron 的原生全屏 API
+    // 这会隐藏任务栏和系统标题栏，实现真正的沉浸式全屏
+    mainWindow.setFullScreen(true);
 }
 
 /**
- * 设置全屏切换
+ * 设置全屏切换 (F11)
  * @param {Electron.BrowserWindow} mainWindow - 主窗口实例
  */
 export function setupFullScreenToggle(mainWindow: BrowserWindow): void {
-    let isFullScreen = false;
+    // 监听键盘事件
     mainWindow.webContents.on('before-input-event', (event, input) => {
+        // 检测 F11 按下
         if (input.type === 'keyDown' && input.key === 'F11') {
-            if (isFullScreen) {
+            // 根据当前状态切换
+            if (mainWindow.isFullScreen()) {
                 setHalfScreen(mainWindow);
             } else {
                 setFullScreen(mainWindow);
             }
-            isFullScreen = !isFullScreen;
+            // 阻止默认行为（防止浏览器自带的 F11 行为干扰）
             event.preventDefault();
         }
     });
