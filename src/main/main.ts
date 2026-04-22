@@ -16,7 +16,6 @@ import { startProxyProcess, shutdownProxyProcess } from './common/proxy';
 // 禁用输入法自动切换
 app.commandLine.appendSwitch('--lang', 'en-US');
 app.commandLine.appendSwitch('--disable-features', 'VizDisplayCompositor');
-
 // 抑制SSL相关的底层错误日志
 app.commandLine.appendSwitch('--log-level', '3');
 app.commandLine.appendSwitch('--disable-logging');
@@ -75,20 +74,16 @@ if (!gotTheLock) {
             // 设置窗口关闭事件
             setupWindowEvents(mainWindow);
 
-            // 【新增】注册 IPC 处理器 (必须调用，否则按钮无效)
+            // 【顺序调整】先恢复 Cookie 和加载页面，避免全屏后被 loadURL 覆盖导致闪屏
+            await winctrl.setupCookieRestore(mainWindow);
+
+            // 【顺序调整】再注册 IPC 和 监听事件
             winctrl.setupIpcHandlers(mainWindow);
-
-            // 设置全屏切换
             winctrl.setupFullScreenToggle(mainWindow);
-
-            // 禁用输入法自动切换
             winctrl.setupInputMethodDisable(mainWindow);
 
-            // 设置窗口显示事件
+            // 【顺序调整】最后设置窗口显示事件（确保页面加载完再全屏）
             winctrl.setupWindowShowEvents(mainWindow);
-
-            // 恢复 Cookie
-            await winctrl.setupCookieRestore(mainWindow);
 
             // 【新增】监听窗口状态变化，同步图标状态
             // 修复 TS18047 错误：在回调中检查 mainWindow 是否存在
@@ -110,6 +105,7 @@ if (!gotTheLock) {
                     log.error('启动时自动检查更新失败:', error);
                 });
             }, 3000);
+
         } catch (error) {
             log.error('应用启动失败:', error);
             app.quit();
@@ -123,10 +119,8 @@ function setupWindowEvents(mainWindow: BrowserWindow): void {
         mainWindow.on('close', async (event) => {
             if (!(app as any).isQuiting) {
                 event.preventDefault();
-
                 if (process.platform === 'darwin') {
                     const action = getMacCloseAction();
-
                     if (action === 'ask') {
                         const result = await dialog.showMessageBox(mainWindow, {
                             type: 'question',
@@ -139,7 +133,6 @@ function setupWindowEvents(mainWindow: BrowserWindow): void {
                             checkboxLabel: '记住我的选择',
                             checkboxChecked: false
                         });
-
                         if (result.response === 0) {
                             if (result.checkboxChecked) {
                                 setMacCloseAction('minimize');
@@ -164,7 +157,6 @@ function setupWindowEvents(mainWindow: BrowserWindow): void {
                     }
                 } else {
                     const exitMode = fnConfig.getExitMode();
-
                     if (exitMode === 'ask') {
                         const result = await dialog.showMessageBox(mainWindow, {
                             type: 'question',
@@ -177,7 +169,6 @@ function setupWindowEvents(mainWindow: BrowserWindow): void {
                             checkboxLabel: '记住我的选择',
                             checkboxChecked: false
                         });
-
                         if (result.response === 0) {
                             if (result.checkboxChecked) {
                                 fnConfig.setExitMode('direct');
