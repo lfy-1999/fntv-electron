@@ -18,13 +18,13 @@ app.commandLine.appendSwitch('--lang', 'en-US');
 app.commandLine.appendSwitch('--disable-features', 'VizDisplayCompositor');
 
 // 抑制SSL相关的底层错误日志
-app.commandLine.appendSwitch('--log-level', '3'); // 只显示致命错误
+app.commandLine.appendSwitch('--log-level', '3');
 app.commandLine.appendSwitch('--disable-logging');
 app.commandLine.appendSwitch('--silent');
-app.commandLine.appendSwitch('--no-sandbox'); // 有助于减少某些安全相关日志
-app.commandLine.appendSwitch('--disable-web-security'); // 禁用web安全检查（减少相关日志）
-app.commandLine.appendSwitch('--ignore-ssl-errors-spki-list'); // 忽略SSL SPKI列表错误
-app.commandLine.appendSwitch('--ignore-ssl-errors'); // 忽略SSL错误（减少相关日志）
+app.commandLine.appendSwitch('--no-sandbox');
+app.commandLine.appendSwitch('--disable-web-security');
+app.commandLine.appendSwitch('--ignore-ssl-errors-spki-list');
+app.commandLine.appendSwitch('--ignore-ssl-errors');
 
 let mainWindow: BrowserWindow | null = null;
 let proxyProcess: ChildProcess | null = null;
@@ -32,10 +32,8 @@ let proxyProcess: ChildProcess | null = null;
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
-    // 如果没有获取到锁，说明应用已经在运行，直接退出
     app.quit();
 } else {
-    // 当尝试启动第二个实例时，聚焦到现有窗口
     app.on('second-instance', (event, commandLine, workingDirectory) => {
         if (mainWindow) {
             if (mainWindow.isMinimized()) mainWindow.restore();
@@ -46,23 +44,18 @@ if (!gotTheLock) {
 
     app.whenReady().then(async () => {
         try {
-            // 初始化日志系统
             log.info('=== 飞牛影视启动 ===');
             log.info('应用版本:', app.getVersion());
             log.info('Electron版本:', process.versions.electron);
             log.info('Node.js版本:', process.versions.node);
             log.info('日志文件位置:', log.getLogFile());
 
-            // 动态处理证书验证错误
             app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
-                // 检查URL是否在信任列表中
                 if (isTrusted(url)) {
-                    // log.debug(`URL ${url} 在信任列表中，忽略证书验证错误: ${error}`);
                     event.preventDefault();
-                    callback(true); // 信任证书
+                    callback(true);
                 } else {
                     log.warn(`证书验证错误: ${url}, 错误: ${error}`);
-                    // 不在信任列表中，使用默认处理（不信任）
                     callback(false);
                 }
             });
@@ -82,6 +75,10 @@ if (!gotTheLock) {
             // 设置窗口关闭事件
             setupWindowEvents(mainWindow);
 
+            // 【新增】注册 IPC 处理器 (必须调用，否则按钮无效)
+            // 这个函数会监听 'window-maximize' 等事件
+            winctrl.setupIpcHandlers(mainWindow);
+
             // 设置全屏切换
             winctrl.setupFullScreenToggle(mainWindow);
 
@@ -94,7 +91,19 @@ if (!gotTheLock) {
             // 恢复 Cookie
             await winctrl.setupCookieRestore(mainWindow);
 
-            // 延迟3秒后进行自动更新检查，避免影响应用启动速度
+            // 【新增】监听窗口状态变化，同步图标状态
+            // 当用户通过 F11 或 系统拖拽 改变全屏状态时，通知前端更新图标
+            mainWindow.on('enter-full-screen', () => {
+                log.info('检测到进入全屏');
+                mainWindow.webContents.send('window-state-changed', true);
+            });
+
+            mainWindow.on('leave-full-screen', () => {
+                log.info('检测到退出全屏');
+                mainWindow.webContents.send('window-state-changed', false);
+            });
+
+            // 延迟3秒后进行自动更新检查
             setTimeout(() => {
                 getUpdateChecker().autoCheckForUpdates().catch((error: Error) => {
                     log.error('启动时自动检查更新失败:', error);
@@ -110,17 +119,14 @@ if (!gotTheLock) {
 // 设置窗口事件
 function setupWindowEvents(mainWindow: BrowserWindow): void {
     if (mainWindow) {
-        // 监听窗口关闭事件
         mainWindow.on('close', async (event) => {
             if (!(app as any).isQuiting) {
                 event.preventDefault();
 
                 if (process.platform === 'darwin') {
-                    // macOS 上的特殊处理
                     const action = getMacCloseAction();
 
                     if (action === 'ask') {
-                        // 询问用户偏好
                         const result = await dialog.showMessageBox(mainWindow, {
                             type: 'question',
                             title: '关闭窗口',
@@ -134,7 +140,6 @@ function setupWindowEvents(mainWindow: BrowserWindow): void {
                         });
 
                         if (result.response === 0) {
-                            // 隐藏到状态栏
                             if (result.checkboxChecked) {
                                 setMacCloseAction('minimize');
                             }
@@ -142,30 +147,24 @@ function setupWindowEvents(mainWindow: BrowserWindow): void {
                             app.dock?.hide();
                             showMacNotification();
                         } else if (result.response === 1) {
-                            // 退出应用
                             if (result.checkboxChecked) {
                                 setMacCloseAction('quit');
                             }
                             (app as any).isQuiting = true;
                             app.quit();
                         }
-                        // 取消则什么都不做
                     } else if (action === 'minimize') {
-                        // 直接隐藏到托盘
                         mainWindow.hide();
                         app.dock?.hide();
                         showMacNotification();
                     } else if (action === 'quit') {
-                        // 直接退出
                         (app as any).isQuiting = true;
                         app.quit();
                     }
                 } else {
-                    // Windows 和 Linux 上根据退出模式处理
                     const exitMode = fnConfig.getExitMode();
 
                     if (exitMode === 'ask') {
-                        // 询问用户
                         const result = await dialog.showMessageBox(mainWindow, {
                             type: 'question',
                             title: '退出确认',
@@ -179,14 +178,12 @@ function setupWindowEvents(mainWindow: BrowserWindow): void {
                         });
 
                         if (result.response === 0) {
-                            // 退出应用
                             if (result.checkboxChecked) {
                                 fnConfig.setExitMode('direct');
                             }
                             (app as any).isQuiting = true;
                             app.quit();
                         } else if (result.response === 1) {
-                            // 最小化到托盘
                             if (result.checkboxChecked) {
                                 fnConfig.setExitMode('minimize');
                             }
@@ -194,11 +191,9 @@ function setupWindowEvents(mainWindow: BrowserWindow): void {
                             showTrayNotification();
                         }
                     } else if (exitMode === 'minimize') {
-                        // 隐藏到托盘
                         mainWindow.hide();
                         showTrayNotification();
                     } else {
-                        // 直接退出
                         (app as any).isQuiting = true;
                         app.quit();
                     }
@@ -208,7 +203,6 @@ function setupWindowEvents(mainWindow: BrowserWindow): void {
     }
 }
 
-// macOS 通知显示函数
 function showMacNotification(): void {
     if (!getTrayNotificationShown()) {
         if (Notification.isSupported()) {
@@ -223,45 +217,34 @@ function showMacNotification(): void {
     }
 }
 
-// 应用退出事件处理
 app.on('before-quit', async () => {
     (app as any).isQuiting = true;
-
-    // 使用守护程序优雅关闭proxy进程
     log.info('应用退出前关闭proxy进程');
     try {
         await shutdownProxyProcess();
     } catch (error) {
         log.error('关闭proxy进程出错:', error);
     }
-
-    // 销毁托盘图标
     destroyTray();
 });
 
 app.on('window-all-closed', () => {
-    // 在 macOS 上，除非明确退出，否则应用程序及其菜单栏通常会保持活动状态
     if (process.platform !== 'darwin') {
         app.quit();
     }
 });
 
 app.on('activate', () => {
-    // 在 macOS 上，当点击 dock 图标且没有其他窗口打开时，
-    // 通常会重新创建一个窗口
     if (process.platform === 'darwin') {
         if (BrowserWindow.getAllWindows().length === 0) {
             mainWindow = getMainWindow();
             setupWindowEvents(mainWindow);
         } else if (mainWindow) {
-            // 如果窗口存在但被隐藏，则显示它
             if (!mainWindow.isVisible()) {
                 mainWindow.show();
             }
             mainWindow.focus();
         }
-
-        // 确保 dock 图标显示
         app.dock?.show();
     }
 });
