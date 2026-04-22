@@ -10,8 +10,7 @@ const mainwinConfig: BrowserWindowConstructorOptions = {
     show: false,
     icon: path.join(__dirname, '../../../build/icon.ico'),
     frame: false,
-    fullscreen: true, // 【修改】启动即全屏
-    // transparent: true, // 保持注释，如果需要毛玻璃效果可开启，但纯黑背景更稳妥
+    fullscreen: true,  // 默认真全屏
     webPreferences: {
         webgl: true,
         partition: 'persist:fntv',
@@ -24,10 +23,6 @@ const mainwinConfig: BrowserWindowConstructorOptions = {
 
 let mainwin: BrowserWindow | null = null;
 
-/**
- * 获取主窗口实例
- * @returns {BrowserWindow}
- */
 export function getMainWindow(): BrowserWindow {
     if (!mainwin) {
         mainwin = new BrowserWindow(mainwinConfig);
