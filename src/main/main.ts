@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, Notification } from 'electron';
+import { app, BrowserWindow, dialog, Notification, ipcMain } from 'electron'; // 【修改】引入 ipcMain
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -16,7 +16,6 @@ import { startProxyProcess, shutdownProxyProcess } from './common/proxy';
 // 禁用输入法自动切换
 app.commandLine.appendSwitch('--lang', 'en-US');
 app.commandLine.appendSwitch('--disable-features', 'VizDisplayCompositor');
-// 抑制SSL相关的底层错误日志
 app.commandLine.appendSwitch('--log-level', '3');
 app.commandLine.appendSwitch('--disable-logging');
 app.commandLine.appendSwitch('--silent');
@@ -44,62 +43,73 @@ if (!gotTheLock) {
     app.whenReady().then(async () => {
         try {
             log.info('=== 飞牛影视启动 ===');
-            log.info('应用版本:', app.getVersion());
-            log.info('Electron版本:', process.versions.electron);
-            log.info('Node.js版本:', process.versions.node);
-            log.info('日志文件位置:', log.getLogFile());
 
+            // 证书处理
             app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
                 if (isTrusted(url)) {
                     event.preventDefault();
                     callback(true);
                 } else {
-                    log.warn(`证书验证错误: ${url}, 错误: ${error}`);
                     callback(false);
                 }
             });
 
-            // 启动代理服务器
+            // 启动代理
             proxyProcess = await startProxyProcess();
 
-            // 创建主窗口
+            // 创建窗口
             mainWindow = getMainWindow();
 
-            // 注册所有插件
+            // 注册插件
             registerAllPlugins();
 
-            // 创建系统托盘
+            // 创建托盘
             await createTray(mainWindow);
 
-            // 设置窗口关闭事件
+            // 窗口事件
             setupWindowEvents(mainWindow);
 
-            // 【顺序调整】先恢复 Cookie 和加载页面，避免全屏后被 loadURL 覆盖导致闪屏
-            await winctrl.setupCookieRestore(mainWindow);
-
-            // 【顺序调整】再注册 IPC 和 监听事件
-            winctrl.setupIpcHandlers(mainWindow);
+            // 全屏切换逻辑 (F11)
             winctrl.setupFullScreenToggle(mainWindow);
+
+            // 禁用输入法
             winctrl.setupInputMethodDisable(mainWindow);
 
-            // 【顺序调整】最后设置窗口显示事件（确保页面加载完再全屏）
+            // 窗口显示
             winctrl.setupWindowShowEvents(mainWindow);
 
-            // 【新增】监听窗口状态变化，同步图标状态
-            // 修复 TS18047 错误：在回调中检查 mainWindow 是否存在
+            // 恢复 Cookie
+            await winctrl.setupCookieRestore(mainWindow);
+
+            // --- 【新增】IPC 通信监听 (标题栏按钮控制) ---
+            ipcMain.on('window-minimize', () => {
+                mainWindow?.minimize();
+            });
+
+            ipcMain.on('window-close', () => {
+                mainWindow?.close();
+            });
+
+            // 处理标题栏的全屏按钮点击
+            ipcMain.on('window-maximize', () => {
+                if (mainWindow) {
+                    if (mainWindow.isFullScreen()) {
+                        winctrl.setHalfScreen(mainWindow);
+                    } else {
+                        winctrl.setFullScreen(mainWindow);
+                    }
+                }
+            });
+
+            // --- 【新增】监听系统全屏事件，同步给前端更新图标 ---
             mainWindow.on('enter-full-screen', () => {
-                if (!mainWindow) return;
-                log.info('检测到进入全屏');
-                mainWindow.webContents.send('window-state-changed', true);
+                mainWindow?.webContents.send('window-state-changed', true);
             });
-
             mainWindow.on('leave-full-screen', () => {
-                if (!mainWindow) return;
-                log.info('检测到退出全屏');
-                mainWindow.webContents.send('window-state-changed', false);
+                mainWindow?.webContents.send('window-state-changed', false);
             });
 
-            // 延迟3秒后进行自动更新检查
+            // 自动更新
             setTimeout(() => {
                 getUpdateChecker().autoCheckForUpdates().catch((error: Error) => {
                     log.error('启动时自动检查更新失败:', error);
@@ -113,85 +123,87 @@ if (!gotTheLock) {
     });
 }
 
-// 设置窗口事件
+// ... (其余 setupWindowEvents, showMacNotification 等代码保持不变) ...
 function setupWindowEvents(mainWindow: BrowserWindow): void {
     if (mainWindow) {
         mainWindow.on('close', async (event) => {
             if (!(app as any).isQuiting) {
                 event.preventDefault();
                 if (process.platform === 'darwin') {
-                    const action = getMacCloseAction();
-                    if (action === 'ask') {
-                        const result = await dialog.showMessageBox(mainWindow, {
-                            type: 'question',
-                            title: '关闭窗口',
-                            message: '您希望如何处理窗口关闭？',
-                            detail: '在 macOS 上，您可以选择隐藏到状态栏或完全退出应用。',
-                            buttons: ['隐藏到状态栏', '退出应用', '取消'],
-                            defaultId: 0,
-                            cancelId: 2,
-                            checkboxLabel: '记住我的选择',
-                            checkboxChecked: false
-                        });
-                        if (result.response === 0) {
-                            if (result.checkboxChecked) {
-                                setMacCloseAction('minimize');
-                            }
-                            mainWindow.hide();
-                            app.dock?.hide();
-                            showMacNotification();
-                        } else if (result.response === 1) {
-                            if (result.checkboxChecked) {
-                                setMacCloseAction('quit');
-                            }
-                            (app as any).isQuiting = true;
-                            app.quit();
-                        }
-                    } else if (action === 'minimize') {
-                        mainWindow.hide();
-                        app.dock?.hide();
-                        showMacNotification();
-                    } else if (action === 'quit') {
-                        (app as any).isQuiting = true;
-                        app.quit();
-                    }
+                    handleMacClose(mainWindow);
                 } else {
-                    const exitMode = fnConfig.getExitMode();
-                    if (exitMode === 'ask') {
-                        const result = await dialog.showMessageBox(mainWindow, {
-                            type: 'question',
-                            title: '退出确认',
-                            message: '确定要退出飞牛影视吗？',
-                            detail: '您可以选择完全退出应用或最小化到托盘。',
-                            buttons: ['退出应用', '最小化到托盘', '取消'],
-                            defaultId: 1,
-                            cancelId: 2,
-                            checkboxLabel: '记住我的选择',
-                            checkboxChecked: false
-                        });
-                        if (result.response === 0) {
-                            if (result.checkboxChecked) {
-                                fnConfig.setExitMode('direct');
-                            }
-                            (app as any).isQuiting = true;
-                            app.quit();
-                        } else if (result.response === 1) {
-                            if (result.checkboxChecked) {
-                                fnConfig.setExitMode('minimize');
-                            }
-                            mainWindow.hide();
-                            showTrayNotification();
-                        }
-                    } else if (exitMode === 'minimize') {
-                        mainWindow.hide();
-                        showTrayNotification();
-                    } else {
-                        (app as any).isQuiting = true;
-                        app.quit();
-                    }
+                    handleWinClose(mainWindow);
                 }
             }
         });
+    }
+}
+
+function handleMacClose(win: BrowserWindow): void {
+    const action = getMacCloseAction();
+    if (action === 'ask') {
+        dialog.showMessageBox(win, {
+            type: 'question',
+            title: '关闭窗口',
+            message: '您希望如何处理窗口关闭？',
+            detail: '在 macOS 上，您可以选择隐藏到状态栏或完全退出应用。',
+            buttons: ['隐藏到状态栏', '退出应用', '取消'],
+            defaultId: 0,
+            cancelId: 2,
+            checkboxLabel: '记住我的选择',
+            checkboxChecked: false
+        }).then((result) => {
+            if (result.response === 0) {
+                if (result.checkboxChecked) setMacCloseAction('minimize');
+                win.hide();
+                app.dock?.hide();
+                showMacNotification();
+            } else if (result.response === 1) {
+                if (result.checkboxChecked) setMacCloseAction('quit');
+                (app as any).isQuiting = true;
+                app.quit();
+            }
+        });
+    } else if (action === 'minimize') {
+        win.hide();
+        app.dock?.hide();
+        showMacNotification();
+    } else {
+        (app as any).isQuiting = true;
+        app.quit();
+    }
+}
+
+function handleWinClose(win: BrowserWindow): void {
+    const exitMode = fnConfig.getExitMode();
+    if (exitMode === 'ask') {
+        dialog.showMessageBox(win, {
+            type: 'question',
+            title: '退出确认',
+            message: '确定要退出飞牛影视吗？',
+            detail: '您可以选择完全退出应用或最小化到托盘。',
+            buttons: ['退出应用', '最小化到托盘', '取消'],
+            defaultId: 1,
+            cancelId: 2,
+            checkboxLabel: '记住我的选择',
+            checkboxChecked: false
+        }).then((result) => {
+            if (result.response === 0) {
+                if (result.checkboxChecked) fnConfig.setExitMode('direct');
+                (app as any).isQuiting = true;
+                app.quit();
+            } else if (result.response === 1) {
+                if (result.checkboxChecked) fnConfig.setExitMode('minimize');
+                win.hide();
+                showTrayNotification();
+            }
+        });
+    } else if (exitMode === 'minimize') {
+        win.hide();
+        showTrayNotification();
+    } else {
+        (app as any).isQuiting = true;
+        app.quit();
     }
 }
 
