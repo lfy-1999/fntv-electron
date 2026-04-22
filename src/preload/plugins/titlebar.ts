@@ -1,4 +1,3 @@
-// preload/plugins/titlebar.ts
 import { ipcRenderer } from 'electron';
 import { registerHook } from '../core/hooks';
 import { HookType } from '../core/hooks';
@@ -10,70 +9,32 @@ function injectTitleBar(): void {
 
     const bar = document.createElement('div');
     bar.id = 'custom-titlebar';
-    
-    // 【核心修复】
-    // 1. 高度设为 32px，不再为 0，确保有实际的“抓手”区域
-    // 2. 增加 z-index 确保在最上层
+    // 【修改】背景设为透明，去除白色/毛玻璃背景
     bar.style.cssText = `
-        height: 32px;
-        width: 100vw;
-        background: transparent !important;
-        -webkit-app-region: drag;
-        position: fixed;
-        top: 0;
-        left: 0;
-        z-index: 999999;
-        display: flex;
-        justify-content: flex-end;
-        align-items: center;
-        pointer-events: none;
+        height: 32px; width: 100vw; background: transparent !important;
+        -webkit-app-region: drag; position: fixed; top: 0; left: 0;
+        z-index: 999999; display: flex; justify-content: flex-end;
+        align-items: center; pointer-events: none;
     `;
 
-    // 【核心修复】
-    // 按钮容器增加 padding-top，把按钮“推”到可视区域
-    // 增加 overflow: visible 确保图标不被裁切
     bar.innerHTML = `
-        <div id="titlebar-btns" style="-webkit-app-region:no-drag; display:flex; gap:2px; padding-right:4px; padding-top: 4px; pointer-events: auto; overflow: visible;">
-            <!-- 最小化 -->
-            <button id="min-btn" style="
-                background:transparent; border:none; width:34px; height:32px;
-                display:flex; align-items:center; justify-content:center;
-                cursor:pointer; border-radius:4px; transition:all 0.2s ease;
-                overflow: visible;
-            ">
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                    <path d="M2 8H14" stroke="#888" stroke-width="1.5" stroke-linecap="round"/>
+        <div id="titlebar-btns" style="-webkit-app-region: no-drag; display: flex; gap: 2px; padding-right: 4px; pointer-events: auto;">
+            <button id="min-btn" style="background:transparent; border:none; width:46px; height:32px; cursor:pointer; display:flex; align-items:center; justify-content:center;">
+                <svg width="12" height="12" viewBox="0 0 16 16"><path d="M2 8H14" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+            <button id="max-btn" style="background:transparent; border:none; width:46px; height:32px; cursor:pointer; display:flex; align-items:center; justify-content:center;">
+                <!-- 全屏图标 -->
+                <svg id="icon-full" width="12" height="12" viewBox="0 0 16 16">
+                    <path d="M3 5V3H5M13 3V5H11M13 11V13H11M5 13H3V11" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                <!-- 还原图标 (默认隐藏) -->
+                <svg id="icon-restore" width="12" height="12" viewBox="0 0 16 16" style="display:none;">
+                    <path d="M4 4H12V12H4V4Z" stroke="#fff" stroke-width="1.5"/>
+                    <path d="M2 7V14H9" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
                 </svg>
             </button>
-            
-            <!-- 切换全屏 -->
-            <button id="max-btn" style="
-                background:transparent; border:none; width:34px; height:32px;
-                display:flex; align-items:center; justify-content:center;
-                cursor:pointer; border-radius:4px; transition:all 0.2s ease;
-                overflow: visible;
-            ">
-                <!-- 最大化图标 -->
-                <svg id="icon-max" width="12" height="12" viewBox="0 0 16 16" fill="none">
-                    <rect x="3" y="3" width="10" height="10" rx="1.5" stroke="#888" stroke-width="1.5"/>
-                </svg>
-                <!-- 还原图标 -->
-                <svg id="icon-restore" width="12" height="12" viewBox="0 0 16 16" fill="none" style="display:none;">
-                    <path d="M5 5H11V11H5V5Z" stroke="#888" stroke-width="1.5"/>
-                    <path d="M3 8V13H8" stroke="#888" stroke-width="1.5"/>
-                </svg>
-            </button>
-
-            <!-- 关闭 -->
-            <button id="close-btn" style="
-                background:transparent; border:none; width:34px; height:32px;
-                display:flex; align-items:center; justify-content:center;
-                cursor:pointer; border-radius:4px; transition:all 0.2s ease;
-                overflow: visible;
-            ">
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                    <path d="M4 4L12 12M12 4L4 12" stroke="#888" stroke-width="1.5" stroke-linecap="round"/>
-                </svg>
+            <button id="close-btn" style="background:transparent; border:none; width:46px; height:32px; cursor:pointer; display:flex; align-items:center; justify-content:center;">
+                <svg width="12" height="12" viewBox="0 0 16 16"><path d="M4 4L12 12M12 4L4 12" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/></svg>
             </button>
         </div>
     `;
@@ -81,67 +42,50 @@ function injectTitleBar(): void {
     document.documentElement.style.overflowY = 'hidden';
     document.body.appendChild(bar);
 
-    // 按钮交互
-    const buttonIds: string[] = ['min-btn', 'max-btn', 'close-btn'];
-    buttonIds.forEach((id: string) => {
-        const btn = document.getElementById(id) as HTMLButtonElement;
-        if (!btn) return;
-        
-        btn.addEventListener('mouseenter', () => {
-            if (id === 'close-btn') {
-                btn.style.background = 'rgba(232, 17, 35, 0.2)';
-                const path = btn.querySelector('path') as SVGPathElement;
-                if (path) path.style.stroke = '#fff';
-            } else {
-                btn.style.background = 'rgba(255, 255, 255, 0.1)';
-                const svg = btn.querySelector('path, rect') as SVGElement;
-                if (svg) svg.style.stroke = '#fff';
-            }
-        });
-
-        btn.addEventListener('mouseleave', () => {
-            btn.style.background = 'transparent';
-            const svg = btn.querySelector('path, rect') as SVGElement;
-            if (svg) svg.style.stroke = '#888';
-        });
-    });
-
-    // 功能绑定
+    // --- 按钮交互 ---
     const minBtn = document.getElementById('min-btn');
     const maxBtn = document.getElementById('max-btn');
     const closeBtn = document.getElementById('close-btn');
+    const iconFull = document.getElementById('icon-full');
+    const iconRestore = document.getElementById('icon-restore');
 
-    if (minBtn) {
-        minBtn.addEventListener('click', () => ipcRenderer.send('window-minimize'));
-    }
+    // 最小化
+    minBtn?.addEventListener('click', () => ipcRenderer.send('window-minimize'));
+    // 关闭
+    closeBtn?.addEventListener('click', () => ipcRenderer.send('window-close'));
 
-    if (closeBtn) {
-        closeBtn.addEventListener('click', () => ipcRenderer.send('window-close'));
-    }
+    // 全屏/还原切换
+    maxBtn?.addEventListener('click', () => ipcRenderer.send('window-maximize'));
 
-    if (maxBtn) {
-        maxBtn.addEventListener('click', () => {
-            ipcRenderer.send('window-maximize');
-        });
-    }
-
-    // 监听状态更新
-    ipcRenderer.on('window-state-changed', (event, isFullScreen: boolean) => {
-        const maxIcon = document.getElementById('icon-max') as HTMLElement;
-        const restoreIcon = document.getElementById('icon-restore') as HTMLElement;
-        
-        if (maxIcon && restoreIcon) {
-            if (isFullScreen) {
-                maxIcon.style.display = 'none';
-                restoreIcon.style.display = 'block';
+    // 悬停效果 (白色文字，关闭键红色背景)
+    const btns = [minBtn, maxBtn, closeBtn];
+    btns.forEach(btn => {
+        btn?.addEventListener('mouseenter', function() {
+            if (this === closeBtn) {
+                (this as HTMLElement).style.background = 'rgba(232, 17, 35, 0.8)';
             } else {
-                maxIcon.style.display = 'block';
-                restoreIcon.style.display = 'none';
+                (this as HTMLElement).style.background = 'rgba(255, 255, 255, 0.2)';
             }
+        });
+        btn?.addEventListener('mouseleave', function() {
+            (this as HTMLElement).style.background = 'transparent';
+        });
+    });
+
+    // --- 状态同步 ---
+    // 监听主进程发来的状态更新
+    ipcRenderer.on('window-state-changed', (event, isFullScreen: boolean) => {
+        if (isFullScreen) {
+            // 当前是全屏状态，按钮应显示“还原”
+            if (iconFull) iconFull.style.display = 'none';
+            if (iconRestore) iconRestore.style.display = 'block';
+        } else {
+            // 当前是窗口状态，按钮应显示“全屏”
+            if (iconFull) iconFull.style.display = 'block';
+            if (iconRestore) iconRestore.style.display = 'none';
         }
     });
 }
 
 registerHook(HookType.OnReady, injectTitleBar);
-
 export {};
