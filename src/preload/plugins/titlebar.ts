@@ -25,8 +25,9 @@ function injectTitleBar(): void {
         pointer-events: none;
     `;
 
+    // 修改点：在 container 上增加 overflow: visible
     bar.innerHTML = `
-        <div id="titlebar-btns" style="-webkit-app-region:no-drag; display:flex; gap:2px; padding-right:4px; pointer-events: auto;">
+        <div id="titlebar-btns" style="-webkit-app-region:no-drag; display:flex; gap:2px; padding-right:4px; pointer-events: auto; overflow: visible;">
             <!-- 最小化 -->
             <button id="min-btn" style="
                 background:transparent; border:none; width:34px; height:32px;
@@ -46,11 +47,11 @@ function injectTitleBar(): void {
                 cursor:pointer; border-radius:4px; transition:all 0.2s ease;
                 overflow: visible;
             ">
-                <!-- 最大化图标 -->
+                <!-- 最大化图标 (默认显示) -->
                 <svg id="icon-max" width="12" height="12" viewBox="0 0 16 16" fill="none">
                     <rect x="3" y="3" width="10" height="10" rx="1.5" stroke="#888" stroke-width="1.5"/>
                 </svg>
-                <!-- 还原图标 -->
+                <!-- 还原图标 (默认隐藏) -->
                 <svg id="icon-restore" width="12" height="12" viewBox="0 0 16 16" fill="none" style="display:none;">
                     <path d="M5 5H11V11H5V5Z" stroke="#888" stroke-width="1.5"/>
                     <path d="M3 8V13H8" stroke="#888" stroke-width="1.5"/>
@@ -114,24 +115,9 @@ function injectTitleBar(): void {
 
     if (maxBtn) {
         maxBtn.addEventListener('click', () => {
+            // 只发送信号，不立即切换图标，等待主进程反馈
             ipcRenderer.send('window-maximize');
-            toggleIcon();
         });
-    }
-
-    function toggleIcon() {
-        const maxIcon = document.getElementById('icon-max') as HTMLElement;
-        const restoreIcon = document.getElementById('icon-restore') as HTMLElement;
-        
-        if (maxIcon && restoreIcon) {
-            if (maxIcon.style.display === 'none') {
-                maxIcon.style.display = 'block';
-                restoreIcon.style.display = 'none';
-            } else {
-                maxIcon.style.display = 'none';
-                restoreIcon.style.display = 'block';
-            }
-        }
     }
 }
 
