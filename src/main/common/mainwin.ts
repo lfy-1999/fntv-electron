@@ -10,6 +10,7 @@ const mainwinConfig: BrowserWindowConstructorOptions = {
     show: false,
     icon: path.join(__dirname, '../../../build/icon.ico'),
     frame: false,
+    fullscreen: true,
     // transparent: true,
     webPreferences: {
         webgl: true,
