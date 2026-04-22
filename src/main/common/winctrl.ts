@@ -2,11 +2,10 @@ import * as path from 'path';
 import * as log from '../../modules/logger';
 import { readConfig } from '../../modules/fn_config/config';
 import { restoreCookies } from '../../modules/fn_config/cookie';
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, ipcMain } from 'electron'; // 引入 ipcMain
 
 /**
  * 设置窗口为半屏 (退出全屏模式)
- * @param {Electron.BrowserWindow} mainWindow - 主窗口实例
  */
 export function setHalfScreen(mainWindow: BrowserWindow): void {
     if (!mainWindow) return;
@@ -16,13 +15,12 @@ export function setHalfScreen(mainWindow: BrowserWindow): void {
         mainWindow.setFullScreen(false);
     }
     
-    // 2. 确保没有处于最大化状态（防止状态残留）
+    // 2. 确保没有处于最大化状态
     if (mainWindow.isMaximized()) {
         mainWindow.unmaximize();
     }
 
     // 3. 恢复到指定尺寸并居中
-    // 使用 setBounds 确保位置和大小绝对准确
     mainWindow.setSize(1200, 800);
     mainWindow.center();
     
@@ -31,37 +29,50 @@ export function setHalfScreen(mainWindow: BrowserWindow): void {
 
 /**
  * 设置窗口为真全屏
- * @param {Electron.BrowserWindow} mainWindow - 主窗口实例
  */
 export function setFullScreen(mainWindow: BrowserWindow): void {
     if (!mainWindow) return;
     
-    // 直接使用 Electron 的原生全屏 API
-    // 这会隐藏任务栏和系统标题栏，实现真正的沉浸式全屏
-    // 注意：不要混用 maximize() 和 setFullScreen()
+    // 进入全屏
     mainWindow.setFullScreen(true);
-    
     log.info('窗口已进入全屏模式');
 }
 
 /**
+ * 【新增】设置 IPC 监听器 - 必须调用这个才能让按钮生效
+ */
+export function setupIpcHandlers(mainWindow: BrowserWindow): void {
+    // 监听右上角“最大化/还原”按钮的点击
+    ipcMain.on('window-maximize', () => {
+        if (mainWindow.isFullScreen()) {
+            setHalfScreen(mainWindow);
+        } else {
+            setFullScreen(mainWindow);
+        }
+    });
+
+    // 监听最小化
+    ipcMain.on('window-minimize', () => {
+        mainWindow.minimize();
+    });
+
+    // 监听关闭
+    ipcMain.on('window-close', () => {
+        mainWindow.close();
+    });
+}
+
+/**
  * 设置全屏切换 (F11)
- * @param {Electron.BrowserWindow} mainWindow - 主窗口实例
  */
 export function setupFullScreenToggle(mainWindow: BrowserWindow): void {
     mainWindow.webContents.on('before-input-event', (event, input) => {
-        // 检测 F11 按下
         if (input.type === 'keyDown' && input.key === 'F11') {
-            // 直接根据当前系统状态取反，不维护额外的变量
-            const isCurrentlyFullScreen = mainWindow.isFullScreen();
-            
-            if (isCurrentlyFullScreen) {
+            if (mainWindow.isFullScreen()) {
                 setHalfScreen(mainWindow);
             } else {
                 setFullScreen(mainWindow);
             }
-            
-            // 阻止默认行为
             event.preventDefault();
         }
     });
@@ -69,42 +80,31 @@ export function setupFullScreenToggle(mainWindow: BrowserWindow): void {
 
 /**
  * 设置输入法相关功能
- * @param {Electron.BrowserWindow} mainWindow - 主窗口实例
  */
 export function setupInputMethodDisable(mainWindow: BrowserWindow): void {
     mainWindow.webContents.on('dom-ready', () => {
-        // 注入CSS来禁用输入法自动切换
         mainWindow.webContents.insertCSS(`
-            * {
-                ime-mode: disabled !important;
-                -webkit-ime-mode: disabled !important;
-            }
-            input, textarea {
-                ime-mode: inactive !important;
-                -webkit-ime-mode: inactive !important;
-            }
+            * { ime-mode: disabled !important; -webkit-ime-mode: disabled !important; }
+            input, textarea { ime-mode: inactive !important; -webkit-ime-mode: inactive !important; }
         `);
     });
 }
 
 /**
- * 设置窗口显示事件 (在此处强制默认全屏)
- * @param {Electron.BrowserWindow} mainWindow - 主窗口实例
+ * 设置窗口显示事件 (修复默认全屏逻辑)
  */
 export function setupWindowShowEvents(mainWindow: BrowserWindow): void {
     mainWindow.once('ready-to-show', () => {
-        // 显示窗口
         mainWindow.show();
         
-        // 【修改点】：强制默认全屏
-        // 窗口显示后立即进入全屏，实现默认全屏启动
+        // 【修复】强制默认全屏
+        // 这里直接调用，确保窗口显示出来就是全屏
         setFullScreen(mainWindow);
     });
 }
 
 /**
  * 设置 cookie 恢复
- * @param {Electron.BrowserWindow} mainWindow - 主窗口实例
  */
 export async function setupCookieRestore(mainWindow: BrowserWindow): Promise<void> {
     const savedConfig = readConfig();
@@ -114,17 +114,17 @@ export async function setupCookieRestore(mainWindow: BrowserWindow): Promise<voi
         return;
     }
 
-    log.info('恢复登录状态，即将跳转到主页面, domain:', savedConfig.domain, ' token:', savedConfig.token);
+    log.info('恢复登录状态，即将跳转到主页面');
 
     await restoreCookies(savedConfig.domain, savedConfig.token).then((result) => {
         if (result === true) {
             mainWindow.loadURL(`${savedConfig.domain}/v`);
             return;
         }
-        log.warn('Cookie 恢复失败，跳转到登录页面');
+        log.warn('Cookie 恢复失败');
         mainWindow.loadFile(path.join(__dirname, '../../../resource/login/index.html'));
     }).catch((error) => {
-        log.error('Cookie 恢复过程中出现异常:', error);
+        log.error('Cookie 恢复异常:', error);
         mainWindow.loadFile(path.join(__dirname, '../../../resource/login/index.html'));
     });
 }
