@@ -9,8 +9,8 @@ const mainwinConfig: BrowserWindowConstructorOptions = {
     autoHideMenuBar: true,
     show: false,
     icon: path.join(__dirname, '../../../build/icon.ico'),
-    frame: false,          // 无边框
-    fullscreen: true,      // 【关键】启动即进入真全屏
+    frame: false,
+    fullscreen: true,
     webPreferences: {
         webgl: true,
         partition: 'persist:fntv',
@@ -23,6 +23,10 @@ const mainwinConfig: BrowserWindowConstructorOptions = {
 
 let mainwin: BrowserWindow | null = null;
 
+/**
+ * 获取主窗口实例
+ * @returns {BrowserWindow}
+ */
 export function getMainWindow(): BrowserWindow {
     if (!mainwin) {
         mainwin = new BrowserWindow(mainwinConfig);
