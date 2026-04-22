@@ -32,7 +32,7 @@ function injectTitleBar(): void {
                 background:transparent; border:none; width:34px; height:32px;
                 display:flex; align-items:center; justify-content:center;
                 cursor:pointer; border-radius:4px; transition:all 0.2s ease;
-                overflow: visible; /* 修复图标显示不全 */
+                overflow: visible;
             ">
                 <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
                     <path d="M2 8H14" stroke="#888" stroke-width="1.5" stroke-linecap="round"/>
@@ -44,7 +44,7 @@ function injectTitleBar(): void {
                 background:transparent; border:none; width:34px; height:32px;
                 display:flex; align-items:center; justify-content:center;
                 cursor:pointer; border-radius:4px; transition:all 0.2s ease;
-                overflow: visible; /* 修复图标显示不全 */
+                overflow: visible;
             ">
                 <!-- 最大化图标 -->
                 <svg id="icon-max" width="12" height="12" viewBox="0 0 16 16" fill="none">
@@ -104,9 +104,37 @@ function injectTitleBar(): void {
     const maxBtn = document.getElementById('max-btn');
     const closeBtn = document.getElementById('close-btn');
 
-    if (minBtn) minBtn.addEventListener('click', () => ipcRenderer.send('window-minimize'));
-    if (closeBtn) closeBtn.addEventListener('click', () => ipcRenderer.send('window-close'));
+    if (minBtn) {
+        minBtn.addEventListener('click', () => ipcRenderer.send('window-minimize'));
+    }
+
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => ipcRenderer.send('window-close'));
+    }
 
     if (maxBtn) {
         maxBtn.addEventListener('click', () => {
-            ipcRenderer.send('window-maximize'
+            ipcRenderer.send('window-maximize');
+            toggleIcon();
+        });
+    }
+
+    function toggleIcon() {
+        const maxIcon = document.getElementById('icon-max') as HTMLElement;
+        const restoreIcon = document.getElementById('icon-restore') as HTMLElement;
+        
+        if (maxIcon && restoreIcon) {
+            if (maxIcon.style.display === 'none') {
+                maxIcon.style.display = 'block';
+                restoreIcon.style.display = 'none';
+            } else {
+                maxIcon.style.display = 'none';
+                restoreIcon.style.display = 'block';
+            }
+        }
+    }
+}
+
+registerHook(HookType.OnReady, injectTitleBar);
+
+export {};
