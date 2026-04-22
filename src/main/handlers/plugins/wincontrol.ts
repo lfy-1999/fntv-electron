@@ -4,7 +4,6 @@ import { registerHandler } from '../core/ipcHandler';
 
 /**
  * 窗口控制插件
- * 处理窗口的最小化、最大化和关闭操作
  */
 
 // 窗口最小化处理
@@ -13,11 +12,16 @@ function handleMinimize(): void {
     if (mainWindow) mainWindow.minimize();
 }
 
-// 窗口最大化/还原处理
+// 窗口全屏/还原处理
 function handleMaximize(): void {
     const mainWindow = getMainWindow();
     if (mainWindow) {
-        mainWindow.isMaximized() ? setHalfScreen(mainWindow) : setFullScreen(mainWindow);
+        // 【修改】判断是否全屏，而不是判断是否最大化
+        if (mainWindow.isFullScreen()) {
+            setHalfScreen(mainWindow); // 如果是全屏，就退出
+        } else {
+            setFullScreen(mainWindow); // 如果是窗口，就全屏
+        }
     }
 }
 
