@@ -10,6 +10,7 @@ function injectTitleBar(): void {
 
     const bar = document.createElement('div');
     bar.id = 'custom-titlebar';
+    // 核心样式：高度0，透明，悬浮
     bar.style.cssText = `
         height:0px;
         width:100vw;
@@ -25,7 +26,7 @@ function injectTitleBar(): void {
         pointer-events: none;
     `;
 
-    // 修改点：在 container 上增加 overflow: visible
+    // 修改点：容器增加 overflow: visible，防止图标被裁切
     bar.innerHTML = `
         <div id="titlebar-btns" style="-webkit-app-region:no-drag; display:flex; gap:2px; padding-right:4px; pointer-events: auto; overflow: visible;">
             <!-- 最小化 -->
@@ -115,10 +116,29 @@ function injectTitleBar(): void {
 
     if (maxBtn) {
         maxBtn.addEventListener('click', () => {
-            // 只发送信号，不立即切换图标，等待主进程反馈
+            // 只发送信号，不立即切换图标
             ipcRenderer.send('window-maximize');
         });
     }
+
+    // 【核心修改】监听主进程发来的状态更新
+    // 只有收到主进程的确认，才切换图标，保证状态绝对同步
+    ipcRenderer.on('window-state-changed', (event, isFullScreen: boolean) => {
+        const maxIcon = document.getElementById('icon-max') as HTMLElement;
+        const restoreIcon = document.getElementById('icon-restore') as HTMLElement;
+        
+        if (maxIcon && restoreIcon) {
+            if (isFullScreen) {
+                // 如果是全屏状态，显示“还原”图标
+                maxIcon.style.display = 'none';
+                restoreIcon.style.display = 'block';
+            } else {
+                // 如果是窗口状态，显示“最大化”图标
+                maxIcon.style.display = 'block';
+                restoreIcon.style.display = 'none';
+            }
+        }
+    });
 }
 
 registerHook(HookType.OnReady, injectTitleBar);
