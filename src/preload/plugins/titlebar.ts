@@ -13,8 +13,7 @@ function injectTitleBar(): void {
     bar.style.cssText = `
         height:32px;
         width:100vw;
-        background:rgba(255,255,255,0)!important;
-        backdrop-filter: blur(12px)!important;
+        background:transparent !important;
         -webkit-app-region:drag;
         position:fixed;
         top:0;
