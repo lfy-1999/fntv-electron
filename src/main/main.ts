@@ -3,7 +3,7 @@ import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import { registerAllPlugins } from './handlers';
 import { getInstance as getUpdateChecker } from '../modules/updater/updateChecker';
-import * as winctrl from './common/winctrl';
+import * as winctrl from './common/winctrl'; // 引入 winctrl
 import { createTray, showTrayNotification, destroyTray } from './common/tray';
 import { getMacCloseAction, setMacCloseAction, getTrayNotificationShown, setTrayNotificationShown } from './common/preferences';
 import * as fnConfig from '../modules/fn_config/config';
@@ -59,12 +59,14 @@ if (!gotTheLock) {
             registerAllPlugins();
             await createTray(mainWindow);
 
-            // 4. 设置窗口事件
+            // 4. 设置窗口事件 (关闭逻辑等)
             setupWindowEvents(mainWindow);
 
-            // 5. 初始化窗口控制器 (IPC, 全屏逻辑等)
-            const winCtrl = new winctrl.WindowController(mainWindow);
-            winCtrl.init();
+            // 5. 初始化窗口控制 (F11, 输入法, 全屏监听)
+            // 【修改】直接调用函数，不再实例化类
+            winctrl.setupFullScreenToggle(mainWindow);
+            winctrl.setupInputMethodDisable(mainWindow);
+            winctrl.setupWindowShowEvents(mainWindow);
 
             // 6. 恢复登录状态
             await winctrl.setupCookieRestore(mainWindow);
@@ -72,6 +74,34 @@ if (!gotTheLock) {
             // 7. 窗口显示事件
             mainWindow.once('ready-to-show', () => {
                 mainWindow?.show();
+            });
+
+            // --- 【新增】IPC 通信监听 (标题栏按钮控制) ---
+            ipcMain.on('window-minimize', () => {
+                mainWindow?.minimize();
+            });
+
+            ipcMain.on('window-close', () => {
+                mainWindow?.close();
+            });
+
+            // 处理标题栏的全屏按钮点击
+            ipcMain.on('window-maximize', () => {
+                if (mainWindow) {
+                    if (mainWindow.isFullScreen()) {
+                        winctrl.setHalfScreen(mainWindow);
+                    } else {
+                        winctrl.setFullScreen(mainWindow);
+                    }
+                }
+            });
+
+            // --- 【新增】监听系统全屏事件，同步给前端更新图标 ---
+            mainWindow.on('enter-full-screen', () => {
+                mainWindow?.webContents.send('window-state-changed', true);
+            });
+            mainWindow.on('leave-full-screen', () => {
+                mainWindow?.webContents.send('window-state-changed', false);
             });
 
             // 延迟更新检查
