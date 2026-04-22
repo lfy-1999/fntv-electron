@@ -63,6 +63,7 @@ export function setFullScreen(mainWindow: BrowserWindow): void {
 
 /**
  * 【核心修改】设置 IPC 监听器
+ * 增加了图标状态同步通知
  */
 export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     // 监听右上角按钮点击
@@ -77,9 +78,13 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
         if (isCurrentlyFullScreen) {
             log.info('当前是全屏，执行退出');
             setHalfScreen(mainWindow);
+            // 【修复】主动通知渲染进程更新图标为“最大化”
+            mainWindow.webContents.send('window-state-changed', false);
         } else {
             log.info('当前是窗口化，执行全屏');
             setFullScreen(mainWindow);
+            // 【修复】主动通知渲染进程更新图标为“还原”
+            mainWindow.webContents.send('window-state-changed', true);
         }
     });
 
