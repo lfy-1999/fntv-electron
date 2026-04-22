@@ -29,24 +29,40 @@ export function setHalfScreen(mainWindow: BrowserWindow): void {
 }
 
 /**
- * 设置窗口为真全屏
+ * 【核心修改】设置窗口为真全屏
+ * 使用“重置法”确保全屏生效
  */
 export function setFullScreen(mainWindow: BrowserWindow): void {
     if (!mainWindow) return;
 
-    log.info('执行：进入全屏模式');
+    log.info('执行：进入全屏模式 (强制重置)');
 
     // 1. 确保窗口是显示的
     mainWindow.show();
 
-    // 2. 强制进入全屏
-    // 使用 setFullScreen 而不是 maximize
+    // 2. 【关键步骤】先强制退出全屏，再强制进入
+    // 这可以解决某些系统下 setFullScreen(true) 无反应的问题
+    if (mainWindow.isFullScreen()) {
+        mainWindow.setFullScreen(false);
+    }
+    
+    // 3. 确保窗口置顶，防止被其他窗口遮挡
+    mainWindow.setAlwaysOnTop(true);
+    
+    // 4. 执行全屏
     mainWindow.setFullScreen(true);
+    
+    // 5. 全屏成功后，取消置顶（可选，防止影响其他操作）
+    // 稍微延迟一点取消置顶，确保全屏动画完成
+    setTimeout(() => {
+        if (mainWindow && mainWindow.isVisible()) {
+            mainWindow.setAlwaysOnTop(false);
+        }
+    }, 1000);
 }
 
 /**
  * 【核心修改】设置 IPC 监听器
- * 这里的逻辑非常简单：收到信号 -> 判断当前状态 -> 执行相反操作
  */
 export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     // 监听右上角按钮点击
