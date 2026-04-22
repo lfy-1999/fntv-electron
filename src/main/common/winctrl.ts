@@ -29,41 +29,24 @@ export function setHalfScreen(mainWindow: BrowserWindow): void {
 }
 
 /**
- * 【核心修改】设置窗口为真全屏
- * 使用“重置法”确保全屏生效
+ * 【修复】设置窗口为真全屏
+ * 去掉多余的“先退出再进入”逻辑，直接强制全屏
  */
 export function setFullScreen(mainWindow: BrowserWindow): void {
     if (!mainWindow) return;
 
-    log.info('执行：进入全屏模式 (强制重置)');
+    log.info('执行：进入全屏模式');
 
     // 1. 确保窗口是显示的
     mainWindow.show();
 
-    // 2. 【关键步骤】先强制退出全屏，再强制进入
-    // 这可以解决某些系统下 setFullScreen(true) 无反应的问题
-    if (mainWindow.isFullScreen()) {
-        mainWindow.setFullScreen(false);
-    }
-    
-    // 3. 确保窗口置顶，防止被其他窗口遮挡
-    mainWindow.setAlwaysOnTop(true);
-    
-    // 4. 执行全屏
+    // 2. 直接执行全屏
+    // 不要先 setFullScreen(false)，那会导致状态闪烁
     mainWindow.setFullScreen(true);
-    
-    // 5. 全屏成功后，取消置顶（可选，防止影响其他操作）
-    // 稍微延迟一点取消置顶，确保全屏动画完成
-    setTimeout(() => {
-        if (mainWindow && mainWindow.isVisible()) {
-            mainWindow.setAlwaysOnTop(false);
-        }
-    }, 1000);
 }
 
 /**
- * 【核心修改】设置 IPC 监听器
- * 增加了图标状态同步通知
+ * 设置 IPC 监听器
  */
 export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     // 监听右上角按钮点击
@@ -78,12 +61,12 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
         if (isCurrentlyFullScreen) {
             log.info('当前是全屏，执行退出');
             setHalfScreen(mainWindow);
-            // 【修复】主动通知渲染进程更新图标为“最大化”
+            // 通知渲染进程更新图标
             mainWindow.webContents.send('window-state-changed', false);
         } else {
             log.info('当前是窗口化，执行全屏');
             setFullScreen(mainWindow);
-            // 【修复】主动通知渲染进程更新图标为“还原”
+            // 通知渲染进程更新图标
             mainWindow.webContents.send('window-state-changed', true);
         }
     });
@@ -133,8 +116,8 @@ export function setupInputMethodDisable(mainWindow: BrowserWindow): void {
 export function setupWindowShowEvents(mainWindow: BrowserWindow): void {
     mainWindow.once('ready-to-show', () => {
         mainWindow.show();
-        // 强制默认全屏
-        setFullScreen(mainWindow);
+        // 这里不需要强制全屏，因为 mainwin.ts 已经配置了 fullscreen: true
+        // 如果这里再调用一次，可能会导致启动时闪烁
     });
 }
 
